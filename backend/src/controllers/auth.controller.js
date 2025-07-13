@@ -1,5 +1,7 @@
 import User from "../model/User.js"
 import jwt from "jsonwebtoken";
+import bcrypt from "bcryptjs"
+import { upsertStreamUser } from "../lib/stream.js";
 export async function signup(req,res){
     console.log("hitting controller");
     console.log(req.body);
@@ -32,12 +34,26 @@ export async function signup(req,res){
        console.log("idx",idx);
        const randomAvatar=`https://avatar.iran.liara.run/public/${idx}`//avatar placeholder
        console.log(randomAvatar);
+      
+
+     
          const newUser=await User.create({
             email,
             password,
             fullName,
            profilePic:randomAvatar,
          })
+          try {
+      const streamuser=   await upsertStreamUser({
+        id:newUser._id.toString(),
+        name:newUser.fullName,
+        image:newUser.profilePic|| ""
+       })
+       console.log(streamuser);
+       console.log("Stream user created successfully", streamuser.name)
+       } catch (error) {
+       console.log("error creating in stream user",error); 
+       }
          console.log(newUser);
       const token=jwt.sign({userId:newUser._id},process.env.JWT_SECRET,{
         expiresIn:"7d"
@@ -63,9 +79,48 @@ export async function signup(req,res){
       })  
     }
 }
-export async function login(req,res){
-    res.send("login controller");
-}
+export async function login  (req, res)  {
+    const { email, password } = req.body;
+
+    if (!email || !password) {
+        return res.status(400).json({ message: 'Email and password are required' });
+    }
+
+    try {
+        const user = await User.findOne({ email });
+        if (!user) {
+            return res.status(401).json({ message: 'Invalid credentials' });
+        }
+
+        const isMatch = await bcrypt.compare(password, user.password);
+        if (!isMatch) {
+            return res.status(401).json({ message: 'Invalid credentials' });
+        }
+
+        const token = jwt.sign(
+            { userId: user._id },
+            process.env.JWT_SECRET,
+            { expiresIn: '7d' }
+        );
+console.log("token",token);
+        res.cookie('token', token, {
+            httpOnly: true,
+            secure: process.env.NODE_ENV === 'production',
+            sameSite: 'strict',
+            maxAge: 7 * 24 * 60 * 60 * 1000,
+        });
+          res.status(200).json({
+         message: 'Login successful',
+        user:user,
+        
+      })
+
+    } catch (error) {
+        console.error('Login error:', error);
+        res.status(500).json({ message: 'Internal Server Error' });
+    }
+};
 export async function logout(req,res){
-    res.send("logout controller");
+   res.clearCookie("token");
+   return res.status(200).json({success:true,message:"logout successfull"})
 }
