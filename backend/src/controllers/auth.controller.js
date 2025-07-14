@@ -124,3 +124,45 @@ export async function logout(req,res){
    res.clearCookie("token");
    return res.status(200).json({success:true,message:"logout successfull"})
 }
+export async function onBoard(req,res){
+  try {
+    const userId=await req.user._id;
+    const {fullName,bio,nativeLanguage,learningLanguage,location}=req.body;
+    if(!fullName || !bio || !nativeLanguage || !learningLanguage || !location ){
+    return res.status(400).json({
+      success:"false",
+      message:"All the fields are required",
+
+    })}
+    const updatedUser=await User.findByIdAndUpdate(userId,{fullName,bio,nativeLanguage,learningLanguage,location,isOnboarded:true},{new:true, select: "-password -__v -createdAt -updatedAt"});
+    if(!updatedUser){
+      return res.status(404).json({
+        message:"User not found"
+      })
+    }
+    //update user in stream dashboard
+       try {
+      const streamuser=await upsertStreamUser({
+        id:updatedUser._id.toString(),
+        name:updatedUser.fullName,
+        image:updatedUser.profilePic|| ""
+       })
+       console.log(streamuser);
+       console.log("Stream user updated after onboarding successfully", streamuser.name)
+       } catch (error) {
+       console.log("error in updating the stream user",error); 
+       }
+
+    return res.status(200).json({
+      success:true,
+      message:"user updated successfully",
+      data:updatedUser
+    })
+  } catch (error) {
+    console.log("something went wrong in onBoard controller",error)
+    return res.status(500).json({
+      success:false,
+      message:"Internal Server Error"
+    })
+  }
+}
